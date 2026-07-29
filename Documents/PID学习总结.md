@@ -100,3 +100,28 @@ if(MotorFlag)
   Motor_SetPWM(0);
 }
 ```
+
+## 位置式PID定位置控制-积分分离
+
+```c
+//执行PID调控
+Actual += Encoder_Get_Filtered();
+//获取本次误差和上次误差
+Error1 = Error0;
+Error0 = Target-Actual;
+//计算累计的误差积分(注意是小于）
+if(fabs(Ki)>EPSILON && fabs(Error0)<50)
+{
+	ErrorInt+=Error0;
+}else
+{
+	ErrorInt = 0;
+}
+//PID计算（调控力度）
+Out = Kp*Error0+Ki*ErrorInt+Kd*(Error0-Error1);
+//输出限幅
+if(Out>100) Out=100;
+if(Out<-100) Out=-100;
+			
+Motor_SetPWM(Out);	//因为这个函数参数的有效范围是-100~100，所以输出限幅就是-100~100.
+```
