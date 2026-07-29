@@ -11,11 +11,17 @@ STM32 based inverted pendulum control system using PID algorithm
 -参数调试与系统优化
 ##  Hardware
 **MCU** 
+
 STM32f103
+
 **Development Environment** 
+
 Keil MDK
+
 **Language**
+
 C Language
+
 ##  Control Algorithm
 系统采用PID闭环控制算法。
 
@@ -26,3 +32,18 @@ PID控制参数：
 - P（比例）：提高系统相应速度 
 - I（积分）：消除稳态误差
 - D（微分）：抑制系统震荡，提高稳定性
+
+## Features
+
+- PWM电机驱动
+- 参数调试
+- 平衡控制
+- 自动起摆
+
+## Documents
+
+详细开发记录：
+
+- PID调参过程
+- 遇到的问题
+- 算法分析
