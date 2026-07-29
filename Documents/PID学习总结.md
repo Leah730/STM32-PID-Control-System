@@ -60,4 +60,43 @@ Ki=0.05，有点超调，可以改成0.02，超调就好多了，有积分效果
 
 位置式PID是有ErrorInt进行误差积分的累加的，这个单独的积分，其实经常会积过头，造成积分饱和，所以一般需要对积分进行限制，比如积分限幅。增量式PID也有积分过程，这个积分变量是由Out来充当的，Out兼具积分功能后，下面的输出限幅，顺手就限制了积分的幅度，所以，增量式PID，一般不会受到积分饱和问题的困扰。
 
+## 位置式PID定位置控制-积分限幅
 
+```c
+//执行PID调控
+Actual = Encoder_Get_Filtered();
+//获取本次误差和上次误差
+Error1 = Error0;
+Error0 = Target-Actual;
+//计算累计的误差积分
+/*有了积分限幅后，这个判断就不需要了，因为这里判断的作用，也是防止积分深度饱和，比如Ki给0，误差始终存在，积分就会深度饱和。
+if(fabs(Ki)>EPSILON)
+{
+ErrorInt+=Error0;
+}else
+{
+ErrorInt = 0;
+}*/
+			
+ErrorInt += Error0;	//注意啊，不要用中文符号啊
+			
+//先经过计算，100/0.3=333，然后通过实测，发现正常是在300左右
+if(ErrorInt > 300) ErrorInt = 300;
+if(ErrorInt < -300) ErrorInt = -300;	//这里我第一次写了ErrorInt=300，所以在负向调控时会出现剧烈抖动
+			
+//PID计算（调控力度）
+Out = Kp*Error0+Ki*ErrorInt+Kd*(Error0-Error1);
+//输出限幅
+if(Out>100) Out=100;
+if(Out<-100) Out=-100;
+			
+if(MotorFlag)
+{
+  //模拟电机正常工作
+  Motor_SetPWM(Out);	//因为这个函数参数的有效范围是-100~100，所以输出限幅就   是-100~100.
+}else
+{
+  //模拟电机断电或者故障
+  Motor_SetPWM(0);
+}
+```
