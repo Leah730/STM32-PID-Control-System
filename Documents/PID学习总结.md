@@ -125,3 +125,14 @@ if(Out<-100) Out=-100;
 			
 Motor_SetPWM(Out);	//因为这个函数参数的有效范围是-100~100，所以输出限幅就是-100~100.
 ```
+
+## 位置式PID定位置控制-变速积分
+
+```c
+float C = 1 / (0.2 * fabs(Error0) + 1);
+			
+//计算累计的误差积分
+ErrorInt+= C * Error0;
+//PID计算（调控力度）
+Out = Kp*Error0+Ki*ErrorInt+Kd*(Error0-Error1);
+```
