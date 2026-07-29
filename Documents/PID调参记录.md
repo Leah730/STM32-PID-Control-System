@@ -23,3 +23,8 @@ Kp=1.2 （存在稳态误差）Ki = 0.2 (可以跟踪）
 ```c
 Out = Kp*Error0+Ki*ErrorInt+Kd*(Error0-Error1);
 ```
+## 增量式PID定速控制调参
+
+经过测试，Kp=1.1，ki=0.3是合适的。
+
+Out += Kp*(Error0-Error1)+Ki*Error0+Kd*(Error0-2*Error1+Error2);
