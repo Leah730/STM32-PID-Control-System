@@ -14,6 +14,8 @@ Kp = RP_GetValue(1) / 4095.0 * 2 （防止丢失小数）范围给0-2
 
 ## 位置式PID定速控制调参
 
+Actual = Encoder_Get_Filtered();
+
 Kp=1.2 （存在稳态误差）Ki = 0.2 (可以跟踪）
 通过实验连接的串口图可以看出，越靠近目标值，实际值是放缓的，所以是不需要加入D项的。
 
@@ -25,6 +27,14 @@ Out = Kp*Error0+Ki*ErrorInt+Kd*(Error0-Error1);
 ```
 ## 增量式PID定速控制调参
 
-经过测试，Kp=1.1，ki=0.3是合适的。
+经过测试，Kp=1.1，ki=0.3，Kd=0是合适的，Kp再高就有点抖动了。调控周期10ms效果就很完美。
 
 Out += Kp*(Error0-Error1)+Ki*Error0+Kd*(Error0-2*Error1+Error2);
+
+## 位置式PID定位置控制调参
+
+Actual += Encoder_Get_Filtered();
+
+Kp 0.1->0.2->0.3->0.4（有点超调）
+kd 0.1->0.2->0.3->0.4->0.35->0.3（有点慢了）
+所以kp=0.35,kd=0.35是合适的。
