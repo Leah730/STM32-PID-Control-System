@@ -238,4 +238,81 @@ if(fabs(Error0)<5)
 
 同时调节外环和内环的PID参数是不可行的，所以双环PID的调参要按照顺序来调，因为内环可以独立工作，所以我们要先调节内环参数，内环调节好了，我们再在内环的基础上，调节外环参数。在调节内环的时候，我们要把外环PID的代码注释掉，不要让外环工作。在内环定速控制的基础上，加入外环定位置控制的代码，同时开始调节外环的PID参数。加入外环，三个参数都给0，即使位置环什么都不干，用手拧转盘，已经感受到很强的阻力了。因为内环的速度环已经在维持目标速度为0的状态了，这就是双环PID的优势。
 
-同样是PD控制器，单环PID位置会有调控误差，但是双环没有，是因为，双环的位置环的输出值作用于速度环的目标速度，因此无论位置环输出多小的值，电机都不可能不转。把速度环和电机看作一个整体，那这个整体的电机是不存在启动力度的，这样就不会向单环PD定位置控制那样，有最后一点误差消除不了，因此，双环PID有更高的准确性。用手强行去改变转盘，有很大的阻力，位置的调节是非常迅速和有力的，这是因为外力会同时改变转盘的速度和位置，内环和外环都会对外力做出相应，这比单环PID相应的更加迅速，相应力度也会更大，因此，双环PID具有更高的稳定性和响应速度。
+同样是PD控制器，单环PID位置会有调控误差，但是双环没有，是因为，双环的位置环的输出值作用于速度环的目标速度，因此无论位置环输出多小的值，电机都不可能不转。把速度环和电机看作一个整体，那这个整体的电机是不存在启动力度的，这样就不会像单环PD定位置控制那样，有最后一点误差消除不了，因此，双环PID有更高的准确性。用手强行去改变转盘，有很大的阻力，位置的调节是非常迅速和有力的，这是因为外力会同时改变转盘的速度和位置，内环和外环都会对外力做出相应，这比单环PID相应的更加迅速，相应力度也会更大，因此，双环PID具有更高的稳定性和响应速度。
+
+```c
+void TIM1_UP_IRQHandler(void)
+{
+	static uint16_t Count1,Count2;
+	if (TIM_GetITStatus(TIM1, TIM_IT_Update) == SET)
+	{
+		//每隔1ms调用一次Key_Tick()，用于Key模块的内部检测
+		Key_Tick();
+		
+		//内环
+		Count1++;
+		if(Count1>=10)	//40:20-32,20:20-16
+		{				//每隔40ms读取一次编码器，值为32，意思是速度为32个边沿/40ms
+			Count1=0;	//每隔20ms读取一次编码器，值为16，意思是速度为16个边沿/20ms，这两个表示的速度是一样的
+			
+			//执行PID调控
+			Speed = Encoder_Get_Filtered();
+			Location += Speed;
+			InnerActual = Speed;
+			//获取本次误差和上次误差
+			InnerError1 = InnerError0;
+			InnerError0 = InnerTarget-InnerActual;
+			//计算累计的误差积分
+			if(fabs(InnerKi)>EPSILON)
+			{
+				InnerErrorInt+=InnerError0;
+			}else
+			{
+				InnerErrorInt = 0;
+			}
+			//PID计算（调控力度）
+			InnerOut = InnerKp*InnerError0+InnerKi*InnerErrorInt+InnerKd*(InnerError0-InnerError1);
+			//输出限幅
+			if(InnerOut>100) InnerOut=100;
+			if(InnerOut<-100) InnerOut=-100;
+			
+			Motor_SetPWM(InnerOut);	//因为这个函数参数的有效范围是-100~100，所以输出限幅就是-100~100.
+		}
+			
+		//外环
+		Count2++;
+		if(Count2>=10)	//40:20-32,20:20-16
+		{				//每隔40ms读取一次编码器，值为32，意思是速度为32个边沿/40ms
+			Count2=0;	//每隔20ms读取一次编码器，值为16，意思是速度为16个边沿/20ms，这两个表示的速度是一样的
+			
+			//执行PID调控
+			OuterActual = Location;	
+			//获取本次误差和上次误差
+			OuterError1 = OuterError0;
+			OuterError0 = OuterTarget-OuterActual;
+			//计算累计的误差积分
+			if(fabs(OuterKi)>EPSILON)	//在外环测试时，这里解除了注释，但是我一开始这里的Inner没有改成Outer，所以我用手转一下转盘，转盘就疯狂抖动旋转
+				{							//是因为如果没有改，意味着判断外环积分要不要累加的条件竟然是内环Ki等不等于0，速度不等于0，所以Ki就不等于0，所以外环积分项就无限累加
+				OuterErrorInt+=OuterError0;
+			}else
+			{
+				OuterErrorInt = 0;
+			}
+			//PID计算（调控力度）
+			OuterOut = OuterKp*OuterError0+OuterKi*OuterErrorInt+OuterKd*(OuterError0-OuterError1);
+			//输出限幅,OuterOut的输出限幅应该要限制在InnerTarget的输入范围，如果想要以指定速度，旋转到指定位置停下来，可以从这里外环输出值的限幅来设定
+			if(OuterOut>45) OuterOut=45;		//从45到20，发现速度就变慢了
+			if(OuterOut<-45) OuterOut=-45;
+			
+			//Motor_SetPWM(OuterOut);
+			//外环的输出值要作用于内环目标值
+			InnerTarget = OuterOut;
+		}
+		TIM_ClearITPendingBit(TIM1, TIM_IT_Update);
+	}
+}
+```
+
+外环不直接控制电机。外环负责告诉内环：“我希望电机以多快的速度运动”，内环负责：“好的，我控制电机，让速度达到这个目标”。
+
+外环限幅实际上是在限制：最大运动速度。
