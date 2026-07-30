@@ -334,3 +334,174 @@ void TIM1_UP_IRQHandler(void)
 **结果**
 
 外环积分正常工作。
+
+**以指定速度，旋转到指定位置，停下来，并且速度和位置都要能适应负载变化和外界干扰，速度应该怎么设定**
+
+改变外环输出值的限幅。
+
+## PID代码的封装
+
+```c
+PID_t Inner = {
+	.Kp = 1.1,
+	.Ki = 1.1,
+	.Kd = 0,
+	.OutMax = 100,
+	.OutMin = -100,
+};
+
+PID_t Outer = {
+	.Kp = 0.1,
+	.Ki = 0,
+	.Kd = 0.35,
+	.OutMax = 45,
+	.OutMin = -45,
+};
+
+void PID_Update(PID_t *p)
+{
+	p->Error1 = p->Error0;
+	p->Error0 = p->Target - p->Actual;
+	
+	if(p->Ki != 0)
+	{
+		p->ErrorInt += p->Error0;
+	}else
+	{
+		p->ErrorInt = 0;
+	}
+	
+	p->Out = p->Kp * p->Error0 
+			+ p->Ki * p->ErrorInt
+			+ p->Kd * (p->Error0 - p->Error1);
+	
+	if(p->Out > p->OutMax) p->Out = p->OutMax;
+	if(p->Out < p->OutMin) p->Out = p->OutMin;
+}
+
+Speed = Encoder_Get_Filtered();
+Location += Speed;
+Inner.Actual = Speed;
+			
+PID_Update(&Inner);
+			
+Motor_SetPWM(Inner.Out);
+
+Outer.Actual = Location;	
+			
+PID_Update(&Outer);
+			
+//Motor_SetPWM(Outer.Out);
+//外环的输出值要作用于内环目标值
+Inner.Target = Outer.Out;
+```
+
+**结构体变量或结构体指针**
+
+.用于结构体变量；->用于结构体指针。
+
+本质区别：
+
+- .：我手里只有这个结构体本身
+- ->：我手里只有这个结构体的地址，通过地址找到结构体
+
+## 基础驱动代码-角度传感器
+
+读取角度传感器，使用ADC1，改成通道8，摆杆竖直时AD读值时2090左右。
+读取电位器旋钮，使用ADC2。
+拔掉J1，角度传感器，可以看到引脚悬空，AD值在2048附近，极易收到干扰，是不可靠的。
+
+```c
+void AD_Init(void)
+{
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1, ENABLE);
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
+	
+	RCC_ADCCLKConfig(RCC_PCLK2_Div6);
+	
+	GPIO_InitTypeDef GPIO_InitStructure;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_Init(GPIOB, &GPIO_InitStructure);
+	
+	ADC_RegularChannelConfig(ADC1, ADC_Channel_8, 1, ADC_SampleTime_55Cycles5);
+	
+	ADC_InitTypeDef ADC_InitStructure;
+	ADC_InitStructure.ADC_Mode = ADC_Mode_Independent;
+	ADC_InitStructure.ADC_DataAlign = ADC_DataAlign_Right;
+	ADC_InitStructure.ADC_ExternalTrigConv = ADC_ExternalTrigConv_None;
+	ADC_InitStructure.ADC_ContinuousConvMode = DISABLE;
+	ADC_InitStructure.ADC_ScanConvMode = DISABLE;
+	ADC_InitStructure.ADC_NbrOfChannel = 1;
+	ADC_Init(ADC1, &ADC_InitStructure);
+	
+	ADC_Cmd(ADC1, ENABLE);
+	
+	ADC_ResetCalibration(ADC1);
+	while (ADC_GetResetCalibrationStatus(ADC1) == SET);
+	ADC_StartCalibration(ADC1);
+	while (ADC_GetCalibrationStatus(ADC1) == SET);
+}
+
+uint16_t AD_GetValue(void)
+{
+	ADC_SoftwareStartConvCmd(ADC1, ENABLE);
+	while (ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == RESET);
+	return ADC_GetConversionValue(ADC1);
+}
+
+void RP_Init(void)
+{
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC2, ENABLE);
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
+	
+	RCC_ADCCLKConfig(RCC_PCLK2_Div6);
+	
+	GPIO_InitTypeDef GPIO_InitStructure;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2 | GPIO_Pin_3 | GPIO_Pin_4 | GPIO_Pin_5;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_Init(GPIOA, &GPIO_InitStructure);
+		
+	ADC_InitTypeDef ADC_InitStructure;
+	ADC_InitStructure.ADC_Mode = ADC_Mode_Independent;
+	ADC_InitStructure.ADC_DataAlign = ADC_DataAlign_Right;
+	ADC_InitStructure.ADC_ExternalTrigConv = ADC_ExternalTrigConv_None;
+	ADC_InitStructure.ADC_ContinuousConvMode = DISABLE;
+	ADC_InitStructure.ADC_ScanConvMode = DISABLE;
+	ADC_InitStructure.ADC_NbrOfChannel = 1;
+	ADC_Init(ADC2, &ADC_InitStructure);
+	
+	ADC_Cmd(ADC2, ENABLE);
+	
+	ADC_ResetCalibration(ADC2);
+	while (ADC_GetResetCalibrationStatus(ADC2) == SET);
+	ADC_StartCalibration(ADC2);
+	while (ADC_GetCalibrationStatus(ADC2) == SET);
+}
+
+uint16_t RP_GetValue(uint8_t n)
+{
+	//通过参数n的不同来选择RP1,2,3,4分别对应的ADC通道(注：RP一般代表电位器)
+	if(n==1)
+	{
+		ADC_RegularChannelConfig(ADC2, ADC_Channel_2, 1, ADC_SampleTime_55Cycles5);
+	}
+	else if(n==2)
+	{
+		ADC_RegularChannelConfig(ADC2, ADC_Channel_3, 1, ADC_SampleTime_55Cycles5);
+	}
+	else if(n==3)
+	{
+		ADC_RegularChannelConfig(ADC2, ADC_Channel_4, 1, ADC_SampleTime_55Cycles5);
+	}
+	else if(n==4)
+	{
+		ADC_RegularChannelConfig(ADC2, ADC_Channel_5, 1, ADC_SampleTime_55Cycles5);
+	}
+	ADC_SoftwareStartConvCmd(ADC2, ENABLE);
+	while (ADC_GetFlagStatus(ADC2, ADC_FLAG_EOC) == RESET);
+	return ADC_GetConversionValue(ADC2);
+}
+```
